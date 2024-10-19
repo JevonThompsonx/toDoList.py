@@ -23,22 +23,31 @@ parser = argparse.ArgumentParser(
 parser.add_argument('-u','--user', type=str, required=True, dest='username',help="""
                     Username to use in finding, creating, deleting etc your personal to do list.                    If the desired username has a space in it, just wrap it in qoutes like so: 'Jack Thomas'
                     """)
+parser.add_argument('-l', '--list', dest='list', action='store_true', help="""
+                    Command to list all tasks on to do list (requires username)
+                    """)
+parser.add_argument('-d', '--delete', dest='delete', help="""
+                    Command to delete a task on the to do list. 
+                    Will list all tasks then delete the selected id (requires username)                 
+                    """)
+parser.add_argument('-a', '--add', dest='add', help="""
+                     Command to add a task to the to do list (requires username)
+                    """)
 
 args = parser.parse_args()
 with sqlite3.connect('todolist.db') as conn:
     cursor = conn.cursor()
     cursor.execute('PRAGMA foreign_keys = ON;')
     cursor.execute("""CREATE TABLE IF NOT EXISTS users(
-    userid INTEGER PRIMARY KEY,
-    username TEXT NOT NULL
+    username TEXT PRIMARY KEY
     )"""
     )
     cursor.execute("""
                 CREATE TABLE IF NOT EXISTS tasks(
-                taskid PRIMARY KEY,
+                taskid INTEGER PRIMARY KEY AUTOINCREMENT,
                 task TEXT NOT NULL,
-                user_id INTEGER,
-                FOREIGN KEY (user_id) REFERENCES users (userid)
+                username TEXT NOT NULL,
+                FOREIGN KEY (username) REFERENCES users (username)
                 )
                 """)
     if args.username:
@@ -54,7 +63,18 @@ with sqlite3.connect('todolist.db') as conn:
             )
             VALUES(?)
             """, (args.username,))
-    print("Current users:")
-    cursor.execute("SELECT * FROM users")
+    if args.username and args.add:
+        cursor.execute("""
+                       INSERT INTO tasks(task, username)
+                       VALUES(?,?)
+                       """,(args.add, args.username))
+
+    elif args.username and args.list:
+        cursor.execute("""
+                       SELECT tasks.task, tasks.taskid FROM tasks 
+                       LEFT JOIN users 
+                       ON users.username=tasks.username
+                       """)
+        for task in cursor.fetchall():
+            print(f"{task[1]}.{task[0]}")
     conn.commit()
-    print(cursor.fetchall())
