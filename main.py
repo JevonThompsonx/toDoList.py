@@ -7,7 +7,7 @@ Also to be use a skeleton for a later React to do list
 import argparse # for handling flags
 import sqlite3 # for db
 import textwrap # for wrapping epilog
-
+import sys
 class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     """Custom formatter that combines default values and raw description formatting."""
 parser = argparse.ArgumentParser(
@@ -20,13 +20,14 @@ parser = argparse.ArgumentParser(
                     https://github.com/JevonThompsonx?tab=repositories
                     '''),
                     )
-parser.add_argument('-u','--user', type=str, required=True, dest='username',help="""
-                    Username to use in finding, creating, deleting etc your personal to do list.                    If the desired username has a space in it, just wrap it in qoutes like so: 'Jack Thomas'
+parser.add_argument('-u','--user', type=str, dest='username',help="""
+                    Username to use in finding, creating, deleting etc your personal to do list. 
+                    If the desired username has a space in it, just wrap it in qoutes like so: 'Jack Thomas'
                     """)
 parser.add_argument('-l', '--list', dest='list', action='store_true', help="""
                     Command to list all tasks on to do list (requires username)
                     """)
-parser.add_argument('-d', '--delete', dest='delete', help="""
+parser.add_argument('-d', '--delete', dest='delete', action='store_true',help="""
                     Command to delete a task on the to do list. 
                     Will list all tasks then delete the selected id (requires username)                 
                     """)
@@ -47,12 +48,14 @@ with sqlite3.connect('todolist.db') as conn:
                 taskid INTEGER PRIMARY KEY AUTOINCREMENT,
                 task TEXT NOT NULL,
                 username TEXT NOT NULL,
+                status TEXT check(status IN ("complete", "incomplete")) NOT NULL DEFAULT "incomplete",
                 FOREIGN KEY (username) REFERENCES users (username)
                 )
                 """)
     if args.username:
         cursor.execute("SELECT * FROM users WHERE username=?", (args.username,))
         usercheck = cursor.fetchone()
+        username = args.username
         if usercheck:
             print('User already exists\n')
         else:
@@ -63,18 +66,113 @@ with sqlite3.connect('todolist.db') as conn:
             )
             VALUES(?)
             """, (args.username,))
-    if args.username and args.add:
-        cursor.execute("""
-                       INSERT INTO tasks(task, username)
-                       VALUES(?,?)
-                       """,(args.add, args.username))
-
-    elif args.username and args.list:
-        cursor.execute("""
-                       SELECT tasks.task, tasks.taskid FROM tasks 
-                       LEFT JOIN users 
-                       ON users.username=tasks.username
-                       """)
-        for task in cursor.fetchall():
-            print(f"{task[1]}.{task[0]}")
+            print("User inserted")
+        def list_tasks():
+            """
+            List all tasks recieved from cursor numbered
+             """
+            cursor.execute("""
+                            SELECT users.username , tasks.task , tasks.status 
+                            FROM tasks 
+                            INNER JOIN users 
+                            ON users.username=tasks.username
+                            WHERE users.username=?
+                         """, (username,))
+            task_num = 0
+            for individual in cursor.fetchall():
+                task_num = task_num+1
+                match individual:
+                    case individual if individual[2] == 'incomplete':
+                        print(f"{task_num}. {individual[1]} []")
+                    case individual if individual[2] == 'complete':
+                        print(f"{task_num}. {individual[1]} [x]")
+        def list_tasks_with_task_id():
+            """
+            List all tasks attached to current user 
+            with their task id            """
+            cursor.execute("""
+                               SELECT tasks.taskid, tasks.task
+                               FROM tasks 
+                               INNER JOIN users 
+                               ON users.username = tasks.username 
+                               WHERE users.username = ? 
+                               ORDER BY tasks.taskid
+                        """, (username,) )
+            for i in cursor.fetchall():
+                print(f"{i[0]}. {i[1]}")
+        match args:
+            case args if args.add:
+                cursor.execute("""
+                                SELECT users.username, tasks.task FROM tasks
+                                INNER JOIN users
+                                ON users.username=tasks.username
+                                WHERE users.username=?
+                            """, (args.username,))
+                currentTasks = []
+                for task in cursor.fetchall():
+                    currentTasks.append(task[1])
+                newTask = args.add
+                if newTask in currentTasks:
+                    print("Task is already exists in your list\n")
+                else:
+                    print("Adding new task...")
+                    cursor.execute("""
+                                   INSERT INTO tasks(task, username)
+                                   VALUES(?,?)
+                                   """,(newTask, username))
+                print("Current list: ")
+                list_tasks()
+            case args if args.list:
+                list_tasks()
+            case args if args.delete:
+                print("""
+All tasks are given a unique id 
+To delete your task, give me it's ID from the list below:\n
+                      """)
+                cursor.execute("""
+                               SELECT tasks.taskid, tasks.task
+                               FROM tasks 
+                               INNER JOIN users 
+                               ON users.username = tasks.username 
+                               WHERE users.username = ? 
+                               """, (username,) )
+                for task in cursor.fetchall():
+                    print(f"{task[0]}. {task[1]}")
+                DELETING = True
+                print("\nYou can delete as many from the list as needed\n")
+                deleteTuple = ('done', 'quit', 'exit')
+                while DELETING is True:
+                    print(f"Enter any of the following when complete: {deleteTuple}\n")
+                    selected_id = input("Select a task by id: ")
+                    if selected_id in deleteTuple:
+                        print("\nDone deletin!")
+                        sys.exit()
+                    try:
+                        if (deleted_task_id := int(selected_id)):
+                            if deleted_task_id < 0:
+                                print("Id cannot be a negative number")
+                            try:
+                                cursor.execute("""
+                                               DELETE FROM tasks
+                                               WHERE taskid=? AND username=?
+                                               """,(deleted_task_id,username))
+                                if cursor.rowcount:
+                                    print("Task deleted")
+                                else:
+                                    print("Not a valid task id, try again\n")
+                            except:
+                                print("Not a num")
+                        else:
+                            raise ValueError("Not a number")
+                    except ValueError:
+                        print("Selected id needs to be a number & greater than 0")
+                    finally:
+                        list_tasks_with_task_id()
+   # if args.list:
+    #    cursor.execute("""
+     #                   SELECT username FROM users
+      #                  """)
+      #  print("Current users:")
+       # for u in cursor.fetchall():
+        #    print(u[0])
     conn.commit()
