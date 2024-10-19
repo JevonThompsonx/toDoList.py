@@ -57,9 +57,9 @@ with sqlite3.connect('todolist.db') as conn:
         usercheck = cursor.fetchone()
         username = args.username
         if usercheck:
-            print('User already exists\n')
+            print(f'User {username} already exists\n')
         else:
-            print("Inserting new user...\n")
+            print(f"Inserting new user {username}...\n")
             cursor.execute("""
             INSERT INTO users(
             username
