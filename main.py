@@ -7,7 +7,6 @@ Also to be use a skeleton for a later React to do list
 import argparse # for handling flags
 import sqlite3 # for db
 import textwrap # for wrapping epilog
-import sys
 class CustomFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
     """Custom formatter that combines default values and raw description formatting."""
 parser = argparse.ArgumentParser(
@@ -39,6 +38,7 @@ parser.add_argument("-mc", "--mark_complete", dest="mark_complete", help="""
                     """)
 args = parser.parse_args()
 with sqlite3.connect('todolist.db') as conn:
+    exit_tuple = ('done', 'quit', 'exit')
     cursor = conn.cursor()
     cursor.execute('PRAGMA foreign_keys = ON;')
     cursor.execute("""CREATE TABLE IF NOT EXISTS users(
@@ -54,12 +54,14 @@ with sqlite3.connect('todolist.db') as conn:
                 FOREIGN KEY (username) REFERENCES users (username)
                 )
                 """)
-    if args.username:
-        cursor.execute("SELECT * FROM users WHERE username=?", (args.username,))
+    def check_user(username):
+        """
+        Checks if the given user is currently in the database
+        """
+        cursor.execute("SELECT * FROM users WHERE username=?", (username,))
         usercheck = cursor.fetchone()
-        username = args.username
         if usercheck:
-            print(f'User {username} already exists\n')
+            print(f'Welcome back {username}\n')
         else:
             print(f"Inserting new user {username}...\n")
             cursor.execute("""
@@ -67,108 +69,159 @@ with sqlite3.connect('todolist.db') as conn:
             username
             )
             VALUES(?)
-            """, (args.username,))
+            """, (username,))
             print("User inserted")
-        def list_tasks():
-            """
-            List all tasks recieved from cursor numbered
-             """
-            cursor.execute("""
-                            SELECT users.username , tasks.task , tasks.status 
-                            FROM tasks 
-                            INNER JOIN users 
-                            ON users.username=tasks.username
-                            WHERE users.username=?
-                         """, (username,))
-            task_num = 0
-            for individual in cursor.fetchall():
-                task_num = task_num+1
+            conn.commit()
+    def list_tasks(username):
+        """
+        List all tasks recieved from cursor numbered
+        """
+        cursor.execute("""
+                        SELECT users.username , tasks.task , tasks.status, tasks.taskid
+                        FROM tasks 
+                        INNER JOIN users 
+                        ON users.username=tasks.username
+                        WHERE users.username=?
+                        """, (username,))
+        if len(result := cursor.fetchall()) > 0:
+            for individual in result:
                 match individual:
                     case individual if individual[2] == 'incomplete':
-                        print(f"{task_num}. {individual[1]} []")
+                        print(f"{individual[3]}. {individual[1]} []")
                     case individual if individual[2] == 'complete':
-                        print(f"{task_num}. {individual[1]} [x]")
-        def list_tasks_with_task_id():
-            """
-            List all tasks attached to current user 
-            with their task id            """
+                        print(f"{individual[3]}. {individual[1]} [x]")
+        else:
+            print("No tasks to list")
+    def add_task(username, interactive_task = ''):
+        """
+        Adds a task to the given user's list
+        """
+        cursor.execute("""
+                        SELECT users.username, tasks.task FROM tasks
+                        INNER JOIN users
+                        ON users.username=tasks.username
+                        WHERE users.username=?
+                        """, (username,))
+        current_tasks = []
+        for task in cursor.fetchall():
+            current_tasks.append(task[1])
+
+        if interactive_task != '':
+            new_task = interactive_task
+        else:
+            new_task = args.add
+        if new_task in current_tasks:
+            print("Task is already exists in your list\n")
+        else:
+            print(f"Adding {new_task} to list...")
             cursor.execute("""
-                               SELECT tasks.taskid, tasks.task
-                               FROM tasks 
-                               INNER JOIN users 
-                               ON users.username = tasks.username 
-                               WHERE users.username = ? 
-                               ORDER BY tasks.taskid
-                        """, (username,) )
-            if len(result := cursor.fetchall()) > 0:
-                for i in result:
-                    print(f"{i[0]}. {i[1]}")
-                return True
-            print("Task list empty")
-            return False
+                            INSERT INTO tasks(task, username)
+                            VALUES(?,?)
+                            """,(new_task, username))
+            conn.commit()
+        print("Current list: ")
+        list_tasks(username)
+    def delete_task(username):
+        """
+        Promps user to delete tasks by starting a delete loop until exited
+        """
+        print("""
+        All tasks are given a unique id 
+        To delete your task, give me it's ID from the list below:\n
+            """)
+        deleting = True
+        while deleting is True:
+            list_tasks(username)
+            print("\nYou can delete as many from the list as needed\n")
+            print(f"Enter any of the following when complete: {exit_tuple}\n")
+            selected_id = input("Select a task by id: ")
+            if selected_id in exit_tuple:
+                print("\nDone deletin!")
+                break
+            try:
+                if (deleted_task_id := int(selected_id)):
+                    if deleted_task_id < 0:
+                        print("Id cannot be a negative number")
+                    try:
+                        cursor.execute("""
+                                    DELETE FROM tasks
+                                    WHERE taskid=? AND username=?
+                                    """,(deleted_task_id,username))
+                        if cursor.rowcount:
+                            print("Task deleted")
+                            conn.commit()
+                        else:
+                            print("Not a valid task id, try again\n")
+                    except sqlite3.Error:
+                        print("Not a num")
+                else:
+                    raise ValueError("Not a number")
+            except ValueError:
+                print("Selected id needs to be a number & greater than 0")
+        else:
+            print('\nNothing to delete. Exiting...')
+            deleting =False
+
+    if flag_user:= args.username:
+        check_user(flag_user)
         match args:
             case args if args.add:
-                cursor.execute("""
-                                SELECT users.username, tasks.task FROM tasks
-                                INNER JOIN users
-                                ON users.username=tasks.username
-                                WHERE users.username=?
-                            """, (args.username,))
-                currentTasks = []
-                for task in cursor.fetchall():
-                    currentTasks.append(task[1])
-                newTask = args.add
-                if newTask in currentTasks:
-                    print("Task is already exists in your list\n")
-                else:
-                    print("Adding new task...")
-                    cursor.execute("""
-                                   INSERT INTO tasks(task, username)
-                                   VALUES(?,?)
-                                   """,(newTask, username))
-                print("Current list: ")
-                list_tasks()
+                add_task(flag_user)
             case args if args.list:
-                list_tasks()
+                list_tasks(flag_user)
             case args if args.delete:
-                print("""
-All tasks are given a unique id 
-To delete your task, give me it's ID from the list below:\n
-                      """)
-                DELETING = True
-                while DELETING is True:
-                    deleteTuple = ('done', 'quit', 'exit')
-                    if list_tasks_with_task_id() is True:
-                        print("\nYou can delete as many from the list as needed\n")
-                        print(f"Enter any of the following when complete: {deleteTuple}\n")
-                        selected_id = input("Select a task by id: ")
-                        if selected_id in deleteTuple:
-                            print("\nDone deletin!")
-                            break
-                        try:
-                            if (deleted_task_id := int(selected_id)):
-                                if deleted_task_id < 0:
-                                    print("Id cannot be a negative number")
-                                try:
-                                    cursor.execute("""
-                                                   DELETE FROM tasks
-                                                   WHERE taskid=? AND username=?
-                                                   """,(deleted_task_id,username))
-                                    if cursor.rowcount:
-                                        print("Task deleted")
-                                    else:
-                                        print("Not a valid task id, try again\n")
-                                except sqlite3.Error:
-                                    print("Not a num")
-                            else:
-                                raise ValueError("Not a number")
-                        except ValueError:
-                            print("Selected id needs to be a number & greater than 0")
-                    else:
-                        print('\nNothing to delete')
-                        DELETING =False
+                delete_task(flag_user)
             #case args if args.mark_complete:
                 #insert list tasks by their id
+    else:
+        INTERACTIVE = True
+        while INTERACTIVE is True:
+            print("""
+Hello! Welcome to my interactive to do list!\n 
+You are currently in the interactive mode of this app
+To run commands from the command line in a noninteractive way, 
+Please check the help menu by running this application with the help flag:
+`python main.py -h` or `python main.py --help`
+""")
+            print("""
+If you'd like to continue in interactive mode,
+feel free to do so. We'll need a username to continue
+                  """)
+            check_user(interactive_user := input("Please enter your username: "))
+
+
+            MODE_SELECT = True
+            while MODE_SELECT is True:
+                mode_options = ('add_task', 'delete_task', 'list_tasks')
+                mode_alts = ('delete', 'add', 'list')
+                mode = input(f"""
+You can exit at any time by typing any of the following:
+{exit_tuple}
+
+Here are you interactive options:
+{mode_options}
+
+Please select a mode to continue: """)
+                if mode in mode_options or mode_alts:
+                    match mode:
+                        case 'add_task' | 'add':
+                            INTERACTIVE_ADDING = True
+                            while INTERACTIVE_ADDING is True:
+                                task_to_add_interactively = input("New task: ")
+                                if task_to_add_interactively.lower() in exit_tuple:
+                                    INTERACTIVE_ADDING = False
+                                    break
+                                add_task(interactive_user,interactive_task = task_to_add_interactively)
+                        case 'delete_task' | 'delete':
+                            delete_task(interactive_user)
+                        case 'list_tasks' | 'list':
+                            list_tasks(interactive_user)
+                elif mode in exit_tuple:
+                    print('exiting...')
+                    INTERACTIVE = False
+                    MODE_SELECT = False
+                else:
+                    print("Sorry not a valid mode in this app")
 
    # if args.list:
     #    cursor.execute("""
@@ -177,4 +230,3 @@ To delete your task, give me it's ID from the list below:\n
       #  print("Current users:")
        # for u in cursor.fetchall():
         #    print(u[0])
-    conn.commit()
