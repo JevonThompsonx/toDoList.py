@@ -34,7 +34,9 @@ parser.add_argument('-d', '--delete', dest='delete', action='store_true',help=""
 parser.add_argument('-a', '--add', dest='add', help="""
                      Command to add a task to the to do list (requires username)
                     """)
-
+parser.add_argument("-mc", "--mark_complete", dest="mark_complete", help="""
+                    Used to mark tasks as complete or incomplete. Will present a list of tasks to be marked by their id 
+                    """)
 args = parser.parse_args()
 with sqlite3.connect('todolist.db') as conn:
     cursor = conn.cursor()
@@ -98,8 +100,12 @@ with sqlite3.connect('todolist.db') as conn:
                                WHERE users.username = ? 
                                ORDER BY tasks.taskid
                         """, (username,) )
-            for i in cursor.fetchall():
-                print(f"{i[0]}. {i[1]}")
+            if len(result := cursor.fetchall()) > 0:
+                for i in result:
+                    print(f"{i[0]}. {i[1]}")
+                return True
+            print("Task list empty")
+            return False
         match args:
             case args if args.add:
                 cursor.execute("""
@@ -129,45 +135,41 @@ with sqlite3.connect('todolist.db') as conn:
 All tasks are given a unique id 
 To delete your task, give me it's ID from the list below:\n
                       """)
-                cursor.execute("""
-                               SELECT tasks.taskid, tasks.task
-                               FROM tasks 
-                               INNER JOIN users 
-                               ON users.username = tasks.username 
-                               WHERE users.username = ? 
-                               """, (username,) )
-                for task in cursor.fetchall():
-                    print(f"{task[0]}. {task[1]}")
                 DELETING = True
-                print("\nYou can delete as many from the list as needed\n")
-                deleteTuple = ('done', 'quit', 'exit')
                 while DELETING is True:
-                    print(f"Enter any of the following when complete: {deleteTuple}\n")
-                    selected_id = input("Select a task by id: ")
-                    if selected_id in deleteTuple:
-                        print("\nDone deletin!")
-                        sys.exit()
-                    try:
-                        if (deleted_task_id := int(selected_id)):
-                            if deleted_task_id < 0:
-                                print("Id cannot be a negative number")
-                            try:
-                                cursor.execute("""
-                                               DELETE FROM tasks
-                                               WHERE taskid=? AND username=?
-                                               """,(deleted_task_id,username))
-                                if cursor.rowcount:
-                                    print("Task deleted")
-                                else:
-                                    print("Not a valid task id, try again\n")
-                            except:
-                                print("Not a num")
-                        else:
-                            raise ValueError("Not a number")
-                    except ValueError:
-                        print("Selected id needs to be a number & greater than 0")
-                    finally:
-                        list_tasks_with_task_id()
+                    deleteTuple = ('done', 'quit', 'exit')
+                    if list_tasks_with_task_id() is True:
+                        print("\nYou can delete as many from the list as needed\n")
+                        print(f"Enter any of the following when complete: {deleteTuple}\n")
+                        selected_id = input("Select a task by id: ")
+                        if selected_id in deleteTuple:
+                            print("\nDone deletin!")
+                            break
+                        try:
+                            if (deleted_task_id := int(selected_id)):
+                                if deleted_task_id < 0:
+                                    print("Id cannot be a negative number")
+                                try:
+                                    cursor.execute("""
+                                                   DELETE FROM tasks
+                                                   WHERE taskid=? AND username=?
+                                                   """,(deleted_task_id,username))
+                                    if cursor.rowcount:
+                                        print("Task deleted")
+                                    else:
+                                        print("Not a valid task id, try again\n")
+                                except sqlite3.Error:
+                                    print("Not a num")
+                            else:
+                                raise ValueError("Not a number")
+                        except ValueError:
+                            print("Selected id needs to be a number & greater than 0")
+                    else:
+                        print('\nNothing to delete')
+                        DELETING =False
+            #case args if args.mark_complete:
+                #insert list tasks by their id
+
    # if args.list:
     #    cursor.execute("""
      #                   SELECT username FROM users
