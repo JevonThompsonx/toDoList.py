@@ -202,7 +202,7 @@ Here are you interactive options:
 {mode_options}
 
 Please select a mode to continue: """)
-                if mode in mode_options or mode_alts:
+                if mode in mode_options or mode in mode_alts:
                     match mode:
                         case 'add_task' | 'add':
                             INTERACTIVE_ADDING = True
