@@ -201,7 +201,7 @@ You can exit at any time by typing any of the following:
 Here are you interactive options:
 {mode_options}
 
-Please select a mode to continue: """)
+Please select a mode to continue: """).lower()
                 if mode in mode_options or mode in mode_alts:
                     match mode:
                         case 'add_task' | 'add':
