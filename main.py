@@ -207,8 +207,8 @@ Please select a mode to continue: """).lower()
                         case 'add_task' | 'add':
                             INTERACTIVE_ADDING = True
                             while INTERACTIVE_ADDING is True:
-                                task_to_add_interactively = input("New task: ")
-                                if task_to_add_interactively.lower() in exit_tuple:
+                                task_to_add_interactively = input("New task: ").lower()
+                                if task_to_add_interactively in exit_tuple:
                                     INTERACTIVE_ADDING = False
                                     break
                                 add_task(interactive_user,interactive_task = task_to_add_interactively)
