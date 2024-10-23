@@ -28,13 +28,14 @@ parser.add_argument('-l', '--list', dest='list', action='store_true', help="""
                     """)
 parser.add_argument('-d', '--delete', dest='delete', action='store_true',help="""
                     Command to delete a task on the to do list. 
-                    Will list all tasks then delete the selected id (requires username)                 
+                    Will list all tasks then delete the selected id (requires username)      
                     """)
 parser.add_argument('-a', '--add', dest='add', help="""
                      Command to add a task to the to do list (requires username)
                     """)
-parser.add_argument("-mc", "--mark_complete", dest="mark_complete", help="""
+parser.add_argument("-mc", "--mark_complete", dest="mark_complete", action='store_true', help="""
                     Used to mark tasks as complete or incomplete. Will present a list of tasks to be marked by their id 
+                    Works as the Update in this todoList CRUD
                     """)
 args = parser.parse_args()
 with sqlite3.connect('todolist.db') as conn:
@@ -54,6 +55,21 @@ with sqlite3.connect('todolist.db') as conn:
                 FOREIGN KEY (username) REFERENCES users (username)
                 )
                 """)
+    def print_border(border:str):
+        """
+        A simple func that prints a border for the given values
+        """
+        print(border * 25)
+    def print_star():
+        """
+        prints stars w/ print_border
+        """
+        print_border('*')
+    def print_line():
+        """
+        Prints a straight line w/ print border
+        """
+        print_border('-')
     def check_user(username):
         """
         Checks if the given user is currently in the database
@@ -84,14 +100,18 @@ with sqlite3.connect('todolist.db') as conn:
                         WHERE users.username=?
                         """, (username,))
         if len(result := cursor.fetchall()) > 0:
+            print_line()
             for individual in result:
                 match individual:
                     case individual if individual[2] == 'incomplete':
                         print(f"{individual[3]}. {individual[1]} []")
                     case individual if individual[2] == 'complete':
                         print(f"{individual[3]}. {individual[1]} [x]")
+            print_line()
         else:
+            print_star()
             print("No tasks to list")
+            print_star()
     def add_task(username, interactive_task = ''):
         """
         Adds a task to the given user's list
@@ -111,7 +131,9 @@ with sqlite3.connect('todolist.db') as conn:
         else:
             new_task = args.add
         if new_task in current_tasks:
+            print_star()
             print("Task is already exists in your list\n")
+            print_star()
         else:
             print(f"Adding {new_task} to list...")
             cursor.execute("""
@@ -142,12 +164,14 @@ with sqlite3.connect('todolist.db') as conn:
                 if (deleted_task_id := int(selected_id)):
                     if deleted_task_id < 0:
                         print("Id cannot be a negative number")
+                        print('*' * 25)
                     try:
                         cursor.execute("""
                                     DELETE FROM tasks
                                     WHERE taskid=? AND username=?
                                     """,(deleted_task_id,username))
                         if cursor.rowcount:
+                            print('-' * 25)
                             print("Task deleted")
                             conn.commit()
                         else:
@@ -160,8 +184,71 @@ with sqlite3.connect('todolist.db') as conn:
                 print("Selected id needs to be a number & greater than 0")
         else:
             print('\nNothing to delete. Exiting...')
+            print('*')
             deleting =False
+    def mark_complete(username):
+        """
+        Interactively prompts user to mark tasks off as complete of incomplete
+        """
+        marking = True
+        while marking is True:
+            print("""
+Let's get a list of tasks to mark as complete...
 
+Note: 
+You can exit at any time by typing any of the following: 
+{exit_tuple}
+""")
+            list_tasks(username)
+            task_to_mark = input('Select the id of the task to mark complete/incomplete: ').lower()
+            if task_to_mark.strip() in exit_tuple:
+                marking = False
+                break
+            try:
+                task_to_mark = int(task_to_mark)
+                cursor.execute("""
+                               SELECT tasks.status
+                               FROM tasks
+                               INNER JOIN users
+                               ON tasks.username = users.username
+                               WHERE tasks.taskid= ? AND users.username = ?
+
+                               """, (task_to_mark, username,)
+                               )
+                if (result:= cursor.fetchall())==0:
+                    raise KeyError
+                current_status = result[0]
+                current_status = current_status[0]
+                if current_status == 'incomplete':
+                    cursor.execute("""
+                                    UPDATE tasks
+                                    SET status = 'complete'
+                                    WHERE taskid = ? AND username IN (
+                                    SELECT username FROM users WHERE username = ?
+                                    )
+                               """, (task_to_mark, username,)
+                                   )
+
+                elif current_status == 'complete':
+                    cursor.execute("""
+                                    UPDATE tasks
+                                    SET status = 'incomplete'
+                                    WHERE taskid=? AND username IN (
+                                    SELECT username FROM users WHERE username = ?
+                                    )
+                               """, (task_to_mark, username,)
+                                   )
+                print('Marking...')
+                conn.commit()
+            except (KeyError, IndexError):
+                print_star()
+                print('Not a listed task id. Try again...')
+                print_star()
+            except ValueError:
+                print('Invalid value')
+            except sqlite3.Error as e:
+                print('Woah buddy')
+                print(e)
     if flag_user:= args.username:
         check_user(flag_user)
         match args:
@@ -171,8 +258,8 @@ with sqlite3.connect('todolist.db') as conn:
                 list_tasks(flag_user)
             case args if args.delete:
                 delete_task(flag_user)
-            #case args if args.mark_complete:
-                #insert list tasks by their id
+            case args if args.mark_complete:
+                mark_complete(flag_user)
     else:
         INTERACTIVE = True
         while INTERACTIVE is True:
@@ -186,20 +273,24 @@ Please check the help menu by running this application with the help flag:
             print("""
 If you'd like to continue in interactive mode,
 feel free to do so. We'll need a username to continue
+
+Note: Usernames will be lowercased
                   """)
-            check_user(interactive_user := input("Please enter your username: "))
+            check_user(interactive_user := input("Please enter your username: ").lower())
 
 
             MODE_SELECT = True
             while MODE_SELECT is True:
-                mode_options = ('add_task', 'delete_task', 'list_tasks')
-                mode_alts = ('delete', 'add', 'list')
+                mode_options = ('add_task', 'delete_task', 'list_tasks', 'mark_complete')
+                mode_alts = ('add', 'list', 'delete', 'mark')
                 mode = input(f"""
 You can exit at any time by typing any of the following:
-{exit_tuple}
+{sorted(exit_tuple)}
 
 Here are you interactive options:
-{mode_options}
+{sorted(mode_options)}
+    or 
+{sorted(mode_alts)}
 
 Please select a mode to continue: """).lower()
                 if mode in mode_options or mode in mode_alts:
@@ -216,13 +307,15 @@ Please select a mode to continue: """).lower()
                             delete_task(interactive_user)
                         case 'list_tasks' | 'list':
                             list_tasks(interactive_user)
+                        case 'mark_complete' | 'mark':
+                            mark_complete(interactive_user)
                 elif mode in exit_tuple:
                     print('exiting...')
                     INTERACTIVE = False
                     MODE_SELECT = False
                 else:
                     print("Sorry not a valid mode in this app")
-
+    cursor.execute("PRAGMA OPTIMIZE")
    # if args.list:
     #    cursor.execute("""
      #                   SELECT username FROM users
