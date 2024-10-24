@@ -14,7 +14,11 @@ parser = argparse.ArgumentParser(
                     formatter_class=CustomFormatter,
                     description='A simple to do list cli app',
                     epilog=textwrap.dedent('''\
-                    Thank you for using!
+
+                    This project also has an interactive mode 
+                    To use, run the main.py script 
+
+                    Thank you for checking this project out!
                     Check out more projects at:
                     https://github.com/JevonThompsonx?tab=repositories
                     '''),
@@ -34,8 +38,7 @@ parser.add_argument('-a', '--add', dest='add', help="""
                      Command to add a task to the to do list (requires username)
                     """)
 parser.add_argument("-mc", "--mark_complete", dest="mark_complete", action='store_true', help="""
-                    Used to mark tasks as complete or incomplete. Will present a list of tasks to be marked by their id 
-                    Works as the Update in this todoList CRUD
+                    Used to mark tasks as complete or incomplete. Will present a list of tasks to be marked by their id (requires username)
                     """)
 args = parser.parse_args()
 with sqlite3.connect('todolist.db') as conn:
@@ -79,7 +82,9 @@ with sqlite3.connect('todolist.db') as conn:
         if usercheck:
             print(f'Welcome back {username}\n')
         else:
+            print_line()
             print(f"Inserting new user {username}...\n")
+            print_line()
             cursor.execute("""
             INSERT INTO users(
             username
@@ -91,6 +96,8 @@ with sqlite3.connect('todolist.db') as conn:
     def list_tasks(username):
         """
         List all tasks recieved from cursor numbered
+
+        Returns True for a valid listing and false for an empty listing
         """
         cursor.execute("""
                         SELECT users.username , tasks.task , tasks.status, tasks.taskid
@@ -108,10 +115,11 @@ with sqlite3.connect('todolist.db') as conn:
                     case individual if individual[2] == 'complete':
                         print(f"{individual[3]}. {individual[1]} [x]")
             print_line()
-        else:
-            print_star()
-            print("No tasks to list")
-            print_star()
+            return True
+        print_star()
+        print("No tasks to list")
+        print_star()
+        return False
     def add_task(username, interactive_task = ''):
         """
         Adds a task to the given user's list
@@ -135,11 +143,13 @@ with sqlite3.connect('todolist.db') as conn:
             print("Task is already exists in your list\n")
             print_star()
         else:
+            print_line()
             print(f"Adding {new_task} to list...")
             cursor.execute("""
                             INSERT INTO tasks(task, username)
                             VALUES(?,?)
                             """,(new_task, username))
+            print_line()
             conn.commit()
         print("Current list: ")
         list_tasks(username)
@@ -148,12 +158,15 @@ with sqlite3.connect('todolist.db') as conn:
         Promps user to delete tasks by starting a delete loop until exited
         """
         print("""
-        All tasks are given a unique id 
-        To delete your task, give me it's ID from the list below:\n
+All tasks are given a unique id 
+To delete your task, give me it's ID from the list below:\n
             """)
         deleting = True
         while deleting is True:
-            list_tasks(username)
+            if list_tasks(username) is False:
+                print('Exiting...')
+                deleting = False
+                break
             print("\nYou can delete as many from the list as needed\n")
             print(f"Enter any of the following when complete: {exit_tuple}\n")
             selected_id = input("Select a task by id: ")
@@ -175,7 +188,9 @@ with sqlite3.connect('todolist.db') as conn:
                             print("Task deleted")
                             conn.commit()
                         else:
-                            print("Not a valid task id, try again\n")
+                            print_star()
+                            print("Not a valid task id, try again")
+                            print_star()
                     except sqlite3.Error:
                         print("Not a num")
                 else:
@@ -184,7 +199,7 @@ with sqlite3.connect('todolist.db') as conn:
                 print("Selected id needs to be a number & greater than 0")
         else:
             print('\nNothing to delete. Exiting...')
-            print('*')
+            print_star()
             deleting =False
     def mark_complete(username):
         """
@@ -199,7 +214,10 @@ Note:
 You can exit at any time by typing any of the following: 
 {exit_tuple}
 """)
-            list_tasks(username)
+            if list_tasks(username) is False:
+                print("Exiting...")
+                marking = False
+                break
             task_to_mark = input('Select the id of the task to mark complete/incomplete: ').lower()
             if task_to_mark.strip() in exit_tuple:
                 marking = False
@@ -314,12 +332,7 @@ Please select a mode to continue: """).lower()
                     INTERACTIVE = False
                     MODE_SELECT = False
                 else:
+                    print_star()
                     print("Sorry not a valid mode in this app")
+                    print_star()
     cursor.execute("PRAGMA OPTIMIZE")
-   # if args.list:
-    #    cursor.execute("""
-     #                   SELECT username FROM users
-      #                  """)
-      #  print("Current users:")
-       # for u in cursor.fetchall():
-        #    print(u[0])
